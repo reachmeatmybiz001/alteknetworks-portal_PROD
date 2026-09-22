@@ -61,3 +61,11 @@ The role needs permission to call `lambda:GetFunction`, `lambda:UpdateFunctionCo
 `arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:ALTEKNET-UnifiedPortal-API`
 
 Do not put AWS access keys, Cognito secrets, or other credentials in this repository.
+
+## Current release – Super Admin delete controls (2026-09-22)
+- Added Super Admin-only ticket deletion with confirmation.
+- Ticket attachments stored in S3 are removed when a ticket is deleted.
+- Added Super Admin-only customer deletion.
+- Customer deletion removes the customer record and assigned assets, disables/unassigns linked customer portal users, and intentionally retains historical tickets.
+- API Gateway requires `DELETE /tickets/{id}` and `DELETE /customers/{customerId}` routes using the existing Cognito JWT authorizer.
+- See `DELETE-FEATURE-DEPLOYMENT.md` for deployment and validation steps.
