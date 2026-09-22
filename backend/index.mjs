@@ -13,7 +13,7 @@ import {
   AdminUpdateUserAttributesCommand,
   AdminDeleteUserAttributesCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import {
@@ -24,6 +24,7 @@ import {
   UpdateCommand,
   GetCommand,
   DeleteCommand,
+  BatchWriteCommand,
 } from '@aws-sdk/lib-dynamodb'
 
 
@@ -401,6 +402,102 @@ async function createCustomer(event) {
   return response(201, item)
 }
 
+async function listAllCognitoUsers() {
+  const users = []
+  let PaginationToken
+  do {
+    const result = await cognito.send(new ListUsersCommand({
+      UserPoolId: USER_POOL_ID,
+      PaginationToken,
+      Limit: 60,
+    }))
+    users.push(...(result.Users || []))
+    PaginationToken = result.PaginationToken
+  } while (PaginationToken)
+  return users
+}
+
+async function deleteCustomer(event, customerIdValue) {
+  requireRole(event, ['SuperAdmins'])
+  const customerId = String(customerIdValue || '').trim()
+  if (!customerId) throw Object.assign(new Error('Customer ID is required'), { statusCode: 400 })
+
+  const customer = await getCustomer(customerId)
+  if (!customer) throw Object.assign(new Error('Customer not found'), { statusCode: 404 })
+
+  // Customer deletion removes the customer master record and all assigned assets.
+  // Existing tickets are intentionally retained for historical/audit purposes.
+  const assetsResult = await ddb.send(new QueryCommand({
+    TableName: ASSETS_TABLE,
+    IndexName: 'customerId-index',
+    KeyConditionExpression: 'customerId = :customerId',
+    ExpressionAttributeValues: { ':customerId': customerId },
+  }))
+  const assets = assetsResult.Items || []
+
+  for (let index = 0; index < assets.length; index += 25) {
+    const chunk = assets.slice(index, index + 25)
+    if (!chunk.length) continue
+    await ddb.send(new BatchWriteCommand({
+      RequestItems: {
+        [ASSETS_TABLE]: chunk.map((asset) => ({
+          DeleteRequest: { Key: { serialNumber: asset.serialNumber } },
+        })),
+      },
+    }))
+  }
+
+  // Disable and unassign customer portal users rather than deleting their
+  // Cognito identities, preserving the user audit trail.
+  const allUsers = await listAllCognitoUsers()
+  let disabledUsers = 0
+  for (const cognitoUser of allUsers) {
+    const attrs = cognitoUser.Attributes || []
+    const linkedCustomerId = attrs.find((item) => item.Name === 'custom:customerId')?.Value || ''
+    if (String(linkedCustomerId) !== customerId) continue
+
+    const username = cognitoUser.Username
+    if (!username) continue
+    try {
+      const currentGroups = await getUserGroups(username)
+      for (const groupName of currentGroups) {
+        if (ROLES.includes(groupName)) {
+          await cognito.send(new AdminRemoveUserFromGroupCommand({
+            UserPoolId: USER_POOL_ID,
+            Username: username,
+            GroupName: groupName,
+          }))
+        }
+      }
+      await cognito.send(new AdminDeleteUserAttributesCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: username,
+        UserAttributeNames: ['custom:customerId'],
+      }))
+      if (cognitoUser.Enabled !== false) {
+        await cognito.send(new AdminDisableUserCommand({ UserPoolId: USER_POOL_ID, Username: username }))
+      }
+      disabledUsers += 1
+    } catch (error) {
+      console.error('Unable to detach customer user', username, error)
+    }
+  }
+
+  await ddb.send(new DeleteCommand({
+    TableName: CUSTOMERS_TABLE,
+    Key: { customerId },
+  }))
+
+  return response(200, {
+    customerId,
+    customerName: customer.customerName,
+    deleted: true,
+    assetsDeleted: assets.length,
+    usersDisabled: disabledUsers,
+    ticketsRetained: true,
+  })
+}
+
 async function listCustomerAssets(event, customerId) {
   requireRole(event, ['SuperAdmins'])
   await requireActiveCustomer(customerId)
@@ -742,6 +839,47 @@ async function createTicket(event) {
 
   await ddb.send(new PutCommand({ TableName: TICKETS_TABLE, Item: item }))
   return response(201, item)
+}
+
+async function deleteTicket(event, ticketIdValue) {
+  requireRole(event, ['SuperAdmins'])
+
+  const existingResult = await ddb.send(
+    new GetCommand({ TableName: TICKETS_TABLE, Key: { id: ticketIdValue } })
+  )
+  const existing = existingResult.Item
+  if (!existing) {
+    throw Object.assign(new Error('Ticket not found'), { statusCode: 404 })
+  }
+
+  const attachmentKeys = (Array.isArray(existing.attachments) ? existing.attachments : [])
+    .map((item) => item?.key)
+    .filter(Boolean)
+
+  if (ATTACHMENTS_BUCKET && attachmentKeys.length) {
+    await ddbDeleteS3Objects(attachmentKeys)
+  }
+
+  await ddb.send(new DeleteCommand({
+    TableName: TICKETS_TABLE,
+    Key: { id: ticketIdValue },
+  }))
+
+  return response(200, {
+    ticketId: ticketIdValue,
+    deleted: true,
+  })
+}
+
+async function ddbDeleteS3Objects(keys) {
+  if (!ATTACHMENTS_BUCKET || !keys.length) return
+  for (let index = 0; index < keys.length; index += 1000) {
+    const chunk = keys.slice(index, index + 1000)
+    await s3.send(new DeleteObjectsCommand({
+      Bucket: ATTACHMENTS_BUCKET,
+      Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+    }))
+  }
 }
 
 async function updateTicket(event, ticketIdValue, attachmentOverride = null) {
@@ -1198,6 +1336,11 @@ export async function handler(event) {
       return createCustomer(event)
     }
 
+    const customerDeleteMatch = path.match(/\/customers\/([^/]+)$/)
+    if (method === 'DELETE' && customerDeleteMatch) {
+      return deleteCustomer(event, decodeURIComponent(customerDeleteMatch[1]))
+    }
+
     const assetImportMatch = path.match(/\/customers\/([^/]+)\/assets\/import$/)
     if (method === 'POST' && assetImportMatch) {
       return importCustomerAssets(event, decodeURIComponent(assetImportMatch[1]))
@@ -1251,8 +1394,10 @@ export async function handler(event) {
     }
 
     const ticketMatch = path.match(/\/tickets\/([^/]+)$/)
-    if (method === 'PATCH' && ticketMatch) {
-      return updateTicket(event, decodeURIComponent(ticketMatch[1]))
+    if (ticketMatch) {
+      const ticketIdValue = decodeURIComponent(ticketMatch[1])
+      if (method === 'PATCH') return updateTicket(event, ticketIdValue)
+      if (method === 'DELETE') return deleteTicket(event, ticketIdValue)
     }
 
     if (method === 'GET' && path.endsWith('/admin/users')) {
