@@ -16,6 +16,7 @@ import {
   createTicket,
   listTickets,
   updateTicket,
+  deleteTicket,
   uploadTicketAttachment,
   getTicketAttachmentDownloadUrl,
   validateTicketSerial,
@@ -33,6 +34,7 @@ import {
 import {
   listCustomers,
   createCustomer,
+  deleteCustomer,
   listCustomerAssets,
   createCustomerAsset,
   importCustomerAssets,
@@ -598,6 +600,32 @@ function App() {
 
 
   /* =======================================================
+     DELETE TICKET (SUPER ADMIN ONLY)
+  ======================================================= */
+
+  const handleDeleteTicket = async (id, ticketNumber) => {
+    if (!isSuperAdmin) {
+      setError('Only Super Admins can delete tickets.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Are you Sure to Delete?\n\nTicket: ${ticketNumber || id}\n\nThis action cannot be undone.`
+    )
+    if (!confirmed) return
+
+    setError('')
+    try {
+      await deleteTicket(id)
+      setTickets((current) => current.filter((ticket) => ticket.id !== id))
+      setNotice(`Ticket ${ticketNumber || id} deleted successfully.`)
+    } catch (error) {
+      setError(error?.message || 'Unable to delete ticket.')
+    }
+  }
+
+
+  /* =======================================================
      LOAD CUSTOMERS
   ======================================================= */
 
@@ -1001,6 +1029,8 @@ function App() {
               setView('new')
             }
             onUpdate={handleUpdate}
+            canDeleteTickets={isSuperAdmin}
+            onDeleteTicket={handleDeleteTicket}
           />
 
         )}
@@ -1025,6 +1055,8 @@ function App() {
             <AdminPanel
               tickets={tickets}
               onUpdate={handleUpdate}
+              canDeleteTickets={isSuperAdmin}
+              onDeleteTicket={handleDeleteTicket}
               adminView={adminView}
               setAdminView={setAdminView}
               users={users}
@@ -1039,6 +1071,11 @@ function App() {
               onLoadCustomers={loadCustomers}
               onCreateCustomer={async (payload) => {
                 const result = await createCustomer(payload)
+                await loadCustomers()
+                return result
+              }}
+              onDeleteCustomer={async (customerId) => {
+                const result = await deleteCustomer(customerId)
                 await loadCustomers()
                 return result
               }}
@@ -1211,6 +1248,8 @@ function Tickets({
   isAdmin,
   onNew,
   onUpdate,
+  canDeleteTickets = false,
+  onDeleteTicket,
 }) {
 
   const [filter, setFilter] =
@@ -1303,6 +1342,8 @@ function Tickets({
           tickets={filtered}
           admin={isAdmin}
           onUpdate={onUpdate}
+          canDeleteTickets={canDeleteTickets}
+          onDeleteTicket={onDeleteTicket}
         />
 
       ) : (
@@ -1326,6 +1367,8 @@ function TicketTable({
   tickets,
   admin = false,
   onUpdate,
+  canDeleteTickets = false,
+  onDeleteTicket,
 }) {
 
   const [selectedId, setSelectedId] =
@@ -1361,6 +1404,7 @@ function TicketTable({
             <span>Status</span>
             <span>Updated</span>
             <span>Updated By</span>
+            {canDeleteTickets && <span>Action</span>}
           </div>
 
 
@@ -1438,6 +1482,18 @@ function TicketTable({
                     '—'
                   )}
                 </span>
+
+                {canDeleteTickets && (
+                  <span>
+                    <button
+                      type="button"
+                      className="secondary-button small-button"
+                      onClick={() => onDeleteTicket?.(t.id, displayTicketNumber(t))}
+                    >
+                      Delete
+                    </button>
+                  </span>
+                )}
 
 
               </div>
@@ -2083,6 +2139,8 @@ function exportTicketsToExcel(tickets) {
 function AdminPanel({
   tickets,
   onUpdate,
+  canDeleteTickets = false,
+  onDeleteTicket,
   adminView,
   setAdminView,
   users,
@@ -2096,6 +2154,7 @@ function AdminPanel({
   customers = [],
   onLoadCustomers,
   onCreateCustomer,
+  onDeleteCustomer,
   onListAssets,
   onCreateAsset,
   onImportAssets,
@@ -2274,6 +2333,8 @@ function AdminPanel({
               tickets={tickets}
               admin
               onUpdate={onUpdate}
+              canDeleteTickets={canDeleteTickets}
+              onDeleteTicket={onDeleteTicket}
             />
 
           ) : (
@@ -2415,6 +2476,32 @@ function CustomerAssetAdministration({
       <div className="form-card" style={{ marginBottom: '20px' }}>
         <div className="form-grid">
           <label>Customer<select value={selectedCustomerId} onChange={(e) => setSelectedCustomerId(e.target.value)}><option value="">Select customer</option>{customers.map((item) => <option key={item.customerId} value={item.customerId}>{item.customerName} ({item.customerId})</option>)}</select></label>
+          <div className="form-actions" style={{ alignItems: 'end' }}>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={!selectedCustomerId || busy}
+              onClick={async () => {
+                const customer = customers.find((item) => item.customerId === selectedCustomerId)
+                if (!customer) return
+                const confirmed = window.confirm(
+                  `Are you Sure to Delete Customer?\n\n${customer.customerName} (${customer.customerId})\n\nThis will permanently delete the customer record and all assigned assets. Existing tickets will be retained for historical records. Customer portal users linked to this customer will be disabled and unassigned.\n\nThis action cannot be undone.`
+                )
+                if (!confirmed) return
+                setBusy(true); setMessage('')
+                try {
+                  const result = await onDeleteCustomer?.(selectedCustomerId)
+                  setSelectedCustomerId('')
+                  setAssets([])
+                  setMessage(`Customer ${customer.customerName} deleted. ${result?.assetsDeleted || 0} asset(s) removed; ${result?.usersDisabled || 0} portal user(s) disabled. Existing tickets were retained.`)
+                } catch (error) {
+                  setMessage(error?.message || 'Unable to delete customer.')
+                } finally { setBusy(false) }
+              }}
+            >
+              Delete Customer
+            </button>
+          </div>
           <label>Bulk CSV / Excel Import<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => importCsv(e.target.files?.[0])} disabled={!selectedCustomerId || busy} /><small>Columns: serialNumber, product, manufacturer, model, status</small></label>
         </div>
       </div>

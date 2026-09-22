@@ -30,6 +30,7 @@ export const deleteUser = (username) => request(`/admin/users/${encodeURICompone
 
 export const listCustomers = () => request('/customers')
 export const createCustomer = (body) => request('/customers', { method: 'POST', body: JSON.stringify(body) })
+export const deleteCustomer = (customerId) => request(`/customers/${encodeURIComponent(customerId)}`, { method: 'DELETE' })
 export const listCustomerAssets = (customerId) => request(`/customers/${encodeURIComponent(customerId)}/assets`)
 export const createCustomerAsset = (customerId, body) => request(`/customers/${encodeURIComponent(customerId)}/assets`, { method: 'POST', body: JSON.stringify(body) })
 export const importCustomerAssets = (customerId, rows) => request(`/customers/${encodeURIComponent(customerId)}/assets/import`, { method: 'POST', body: JSON.stringify({ rows }) })

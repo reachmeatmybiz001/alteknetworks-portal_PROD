@@ -50,6 +50,23 @@ export async function createTicket(ticket) {
   return response.json()
 }
 
+export async function deleteTicket(id) {
+  if (!config.apiBaseUrl) {
+    const tickets = localTickets().filter((ticket) => ticket.id !== id)
+    saveLocal(tickets)
+    return { id, deleted: true }
+  }
+  const response = await fetch(`${config.apiBaseUrl}/tickets/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  })
+  const text = await response.text()
+  let data = null
+  try { data = text ? JSON.parse(text) : null } catch { data = { message: text } }
+  if (!response.ok) throw new Error(data?.message || `Unable to delete ticket (${response.status})`)
+  return data
+}
+
 export async function updateTicket(id, changes) {
   if (!config.apiBaseUrl) {
     const tickets = localTickets().map((ticket) =>
