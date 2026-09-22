@@ -1393,7 +1393,7 @@ function TicketTable({
 
       <div className="table-card">
 
-        <div className="ticket-table">
+        <div className={`ticket-table ${canDeleteTickets ? "admin-ticket-table" : ""}`} >
 
           <div className="table-row table-head">
             <span>Ticket</span>
@@ -1513,6 +1513,8 @@ function TicketTable({
           onUpdate={onUpdate}
           onClose={closeDetails}
           admin={admin}
+          canDeleteTicket={canDeleteTickets}
+          onDeleteTicket={onDeleteTicket}
         />
 
       )}
@@ -1544,6 +1546,8 @@ function TicketProcessingPanel({
   onUpdate,
   onClose,
   admin = false,
+  canDeleteTicket = false,
+  onDeleteTicket,
 }) {
   const [priority, setPriority] = useState(ticket.priority || 'Medium')
   const [status, setStatus] = useState(ticket.status || 'Open')
@@ -1604,12 +1608,32 @@ function TicketProcessingPanel({
     }
   }
 
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key === 'Escape' && !saving && !uploading) onClose?.()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [onClose, saving, uploading])
+
   return (
-    <section className="ticket-processing-card">
+    <div
+      className="ticket-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving && !uploading) onClose?.()
+      }}
+    >
+      <section
+        className="ticket-processing-card ticket-processing-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ticket-processing-title"
+      >
       <div className="ticket-processing-head">
         <div>
           <span className="eyebrow">{admin ? 'TICKET PROCESSING' : 'TICKET DETAILS'}</span>
-          <h2>{displayTicketNumber(ticket)} — {ticket.subject}</h2>
+          <h2 id="ticket-processing-title">{displayTicketNumber(ticket)} — {ticket.subject}</h2>
           <p>Customer: <strong>{formatIdentity(ticket.customerEmail, '—')}</strong></p>
         </div>
         <button type="button" className="secondary-button" onClick={onClose} disabled={saving || uploading}>Close panel</button>
@@ -1685,12 +1709,24 @@ function TicketProcessingPanel({
       )}
 
       <div className="ticket-processing-actions">
+        {canDeleteTicket && (
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => onDeleteTicket?.(ticket.id, displayTicketNumber(ticket))}
+            disabled={saving || uploading}
+          >
+            Delete Ticket
+          </button>
+        )}
+        <span className="ticket-processing-actions-spacer" />
         <button type="button" className="secondary-button" onClick={onClose} disabled={saving || uploading}>Cancel</button>
         <button type="button" className="primary-button" onClick={saveChanges} disabled={saving || uploading || (!comment.trim() && priority === ticket.priority && status === ticket.status)}>
           {saving ? 'Saving…' : 'Update Ticket'}
         </button>
       </div>
-    </section>
+      </section>
+    </div>
   )
 }
 
@@ -2371,6 +2407,7 @@ function AdminPanel({
           customers={customers}
           onLoadCustomers={onLoadCustomers}
           onCreateCustomer={onCreateCustomer}
+          onDeleteCustomer={onDeleteCustomer}
           onListAssets={onListAssets}
           onCreateAsset={onCreateAsset}
           onImportAssets={onImportAssets}
@@ -2392,6 +2429,7 @@ function CustomerAssetAdministration({
   customers = [],
   onLoadCustomers,
   onCreateCustomer,
+  onDeleteCustomer,
   onListAssets,
   onCreateAsset,
   onImportAssets,
@@ -2479,7 +2517,7 @@ function CustomerAssetAdministration({
           <div className="form-actions" style={{ alignItems: 'end' }}>
             <button
               type="button"
-              className="secondary-button"
+              className="danger-button"
               disabled={!selectedCustomerId || busy}
               onClick={async () => {
                 const customer = customers.find((item) => item.customerId === selectedCustomerId)
