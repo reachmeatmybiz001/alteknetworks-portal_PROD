@@ -1374,6 +1374,42 @@ function TicketTable({
   const [selectedId, setSelectedId] =
     useState(null)
 
+  const [selectedTicketIds, setSelectedTicketIds] =
+    useState([])
+
+  const allTicketsSelected =
+    tickets.length > 0 &&
+    tickets.every((ticket) => selectedTicketIds.includes(ticket.id))
+
+  const toggleTicketSelection = (id) => {
+    setSelectedTicketIds((current) =>
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id]
+    )
+  }
+
+  const toggleAllTickets = () => {
+    setSelectedTicketIds((current) =>
+      allTicketsSelected
+        ? current.filter((id) => !tickets.some((ticket) => ticket.id === id))
+        : Array.from(new Set([...current, ...tickets.map((ticket) => ticket.id)]))
+    )
+  }
+
+  const deleteSelectedTickets = async () => {
+    if (!selectedTicketIds.length) return
+    const selectedTickets = tickets.filter((ticket) => selectedTicketIds.includes(ticket.id))
+    const confirmed = window.confirm(
+      `Are you Sure to Delete ${selectedTickets.length} Ticket(s)?\n\n${selectedTickets.map((ticket) => displayTicketNumber(ticket)).join(', ')}\n\nThis action cannot be undone.`
+    )
+    if (!confirmed) return
+    for (const ticket of selectedTickets) {
+      await onDeleteTicket?.(ticket.id, displayTicketNumber(ticket))
+    }
+    setSelectedTicketIds([])
+  }
+
   const selectedTicket =
     tickets.find((ticket) =>
       ticket.id === selectedId
@@ -1391,9 +1427,21 @@ function TicketTable({
 
     <>
 
+      {canDeleteTickets && (
+        <div className="form-card" style={{ marginBottom: '14px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '9px', margin: 0, fontWeight: 700, cursor: 'pointer' }}>
+            <input type="checkbox" checked={allTicketsSelected} onChange={toggleAllTickets} disabled={!tickets.length} aria-label="Select all visible tickets" style={{ width: '18px', height: '18px' }} />
+            Select All {tickets.length ? `(${tickets.length})` : ''}
+          </label>
+          <button type="button" className="secondary-button" onClick={deleteSelectedTickets} disabled={!selectedTicketIds.length}>
+            Delete Selected{selectedTicketIds.length ? ` (${selectedTicketIds.length})` : ''}
+          </button>
+        </div>
+      )}
+
       <div className="table-card">
 
-        <div className={`ticket-table ${canDeleteTickets ? "admin-ticket-table" : ""}`} >
+        <div className="ticket-table">
 
           <div className="table-row table-head">
             <span>Ticket</span>
@@ -1416,7 +1464,10 @@ function TicketTable({
                 key={t.id}
               >
 
-                <span className="ticket-id">
+                <span className="ticket-id" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {canDeleteTickets && (
+                    <input type="checkbox" checked={selectedTicketIds.includes(t.id)} onChange={() => toggleTicketSelection(t.id)} aria-label={`Select ticket ${displayTicketNumber(t)}`} style={{ width: '17px', height: '17px', flex: '0 0 auto' }} />
+                  )}
                   <button
                     type="button"
                     className="ticket-link"
@@ -1513,8 +1564,6 @@ function TicketTable({
           onUpdate={onUpdate}
           onClose={closeDetails}
           admin={admin}
-          canDeleteTicket={canDeleteTickets}
-          onDeleteTicket={onDeleteTicket}
         />
 
       )}
@@ -1546,8 +1595,6 @@ function TicketProcessingPanel({
   onUpdate,
   onClose,
   admin = false,
-  canDeleteTicket = false,
-  onDeleteTicket,
 }) {
   const [priority, setPriority] = useState(ticket.priority || 'Medium')
   const [status, setStatus] = useState(ticket.status || 'Open')
@@ -1608,32 +1655,12 @@ function TicketProcessingPanel({
     }
   }
 
-  useEffect(() => {
-    const handleEscape = (event) => {
-      if (event.key === 'Escape' && !saving && !uploading) onClose?.()
-    }
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [onClose, saving, uploading])
-
   return (
-    <div
-      className="ticket-modal-backdrop"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !saving && !uploading) onClose?.()
-      }}
-    >
-      <section
-        className="ticket-processing-card ticket-processing-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ticket-processing-title"
-      >
+    <section className="ticket-processing-card">
       <div className="ticket-processing-head">
         <div>
           <span className="eyebrow">{admin ? 'TICKET PROCESSING' : 'TICKET DETAILS'}</span>
-          <h2 id="ticket-processing-title">{displayTicketNumber(ticket)} — {ticket.subject}</h2>
+          <h2>{displayTicketNumber(ticket)} — {ticket.subject}</h2>
           <p>Customer: <strong>{formatIdentity(ticket.customerEmail, '—')}</strong></p>
         </div>
         <button type="button" className="secondary-button" onClick={onClose} disabled={saving || uploading}>Close panel</button>
@@ -1709,24 +1736,12 @@ function TicketProcessingPanel({
       )}
 
       <div className="ticket-processing-actions">
-        {canDeleteTicket && (
-          <button
-            type="button"
-            className="danger-button"
-            onClick={() => onDeleteTicket?.(ticket.id, displayTicketNumber(ticket))}
-            disabled={saving || uploading}
-          >
-            Delete Ticket
-          </button>
-        )}
-        <span className="ticket-processing-actions-spacer" />
         <button type="button" className="secondary-button" onClick={onClose} disabled={saving || uploading}>Cancel</button>
         <button type="button" className="primary-button" onClick={saveChanges} disabled={saving || uploading || (!comment.trim() && priority === ticket.priority && status === ticket.status)}>
           {saving ? 'Saving…' : 'Update Ticket'}
         </button>
       </div>
-      </section>
-    </div>
+    </section>
   )
 }
 
@@ -2437,7 +2452,46 @@ function CustomerAssetAdministration({
   onDeleteAsset,
 }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState(customers[0]?.customerId || '')
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState([])
   const [assets, setAssets] = useState([])
+
+  const allCustomersSelected =
+    customers.length > 0 &&
+    customers.every((customer) => selectedCustomerIds.includes(customer.customerId))
+
+  const toggleCustomerSelection = (customerId) => {
+    setSelectedCustomerIds((current) =>
+      current.includes(customerId)
+        ? current.filter((id) => id !== customerId)
+        : [...current, customerId]
+    )
+  }
+
+  const toggleAllCustomers = () => {
+    setSelectedCustomerIds(allCustomersSelected ? [] : customers.map((customer) => customer.customerId))
+  }
+
+  const deleteSelectedCustomers = async () => {
+    if (!selectedCustomerIds.length) return
+    const selected = customers.filter((customer) => selectedCustomerIds.includes(customer.customerId))
+    const confirmed = window.confirm(
+      `Are you Sure to Delete ${selected.length} Customer(s)?\n\n${selected.map((customer) => `${customer.customerName} (${customer.customerId})`).join(', ')}\n\nThis will permanently delete the selected customer records and all assigned assets. Existing tickets will be retained for historical records. Linked customer portal users will be disabled and unassigned.\n\nThis action cannot be undone.`
+    )
+    if (!confirmed) return
+    setBusy(true); setMessage('')
+    try {
+      for (const customer of selected) await onDeleteCustomer?.(customer.customerId)
+      setSelectedCustomerIds([])
+      setSelectedCustomerId('')
+      setAssets([])
+      await onLoadCustomers?.()
+      setMessage(`${selected.length} customer(s) deleted successfully. Existing tickets were retained.`)
+    } catch (error) {
+      setMessage(error?.message || 'Unable to delete selected customers.')
+    } finally {
+      setBusy(false)
+    }
+  }
   const [customerName, setCustomerName] = useState('')
   const [serialNumber, setSerialNumber] = useState('')
   const [product, setProduct] = useState('')
@@ -2517,7 +2571,7 @@ function CustomerAssetAdministration({
           <div className="form-actions" style={{ alignItems: 'end' }}>
             <button
               type="button"
-              className="danger-button"
+              className="secondary-button"
               disabled={!selectedCustomerId || busy}
               onClick={async () => {
                 const customer = customers.find((item) => item.customerId === selectedCustomerId)
@@ -2541,6 +2595,29 @@ function CustomerAssetAdministration({
             </button>
           </div>
           <label>Bulk CSV / Excel Import<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => importCsv(e.target.files?.[0])} disabled={!selectedCustomerId || busy} /><small>Columns: serialNumber, product, manufacturer, model, status</small></label>
+        </div>
+      </div>
+
+      <div className="table-card" style={{ marginBottom: '20px' }}>
+        <div className="ticket-table">
+          <div className="table-row table-head" style={{ gridTemplateColumns: '48px 1fr 1fr 1fr' }}>
+            <span><input type="checkbox" checked={allCustomersSelected} onChange={toggleAllCustomers} disabled={!customers.length || busy} aria-label="Select all customers" style={{ width: '18px', height: '18px' }} /></span>
+            <span>Customer</span><span>Customer ID</span><span>Status</span>
+          </div>
+          {customers.length ? customers.map((customer) => (
+            <div className={`table-row ${selectedCustomerId === customer.customerId ? 'ticket-row-selected' : ''}`} key={customer.customerId} style={{ gridTemplateColumns: '48px 1fr 1fr 1fr', cursor: 'pointer' }} onClick={() => setSelectedCustomerId(customer.customerId)}>
+              <span onClick={(event) => event.stopPropagation()}>
+                <input type="checkbox" checked={selectedCustomerIds.includes(customer.customerId)} onChange={() => toggleCustomerSelection(customer.customerId)} disabled={busy} aria-label={`Select customer ${customer.customerName}`} style={{ width: '18px', height: '18px' }} />
+              </span>
+              <span><strong>{customer.customerName}</strong></span><span>{customer.customerId}</span><span><Status value={customer.status || 'Active'} /></span>
+            </div>
+          )) : <div className="empty-card">No customers found.</div>}
+        </div>
+        <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <strong>{selectedCustomerIds.length ? `${selectedCustomerIds.length} customer(s) selected` : 'Select customers using the checkboxes above.'}</strong>
+          <button type="button" className="secondary-button" onClick={deleteSelectedCustomers} disabled={!selectedCustomerIds.length || busy}>
+            Delete Selected{selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ''}
+          </button>
         </div>
       </div>
 
