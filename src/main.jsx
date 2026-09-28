@@ -2622,17 +2622,24 @@ function CustomerAssetAdministration({
       </div>
 
       <div className="table-card" style={{ marginBottom: '20px' }}>
-        <div className="ticket-table">
-          <div className="table-row table-head" style={{ gridTemplateColumns: '48px 1.2fr 1fr 1fr 1fr' }}>
+        <div className="ticket-table customer-list-table">
+          <div className="table-row table-head" style={{ gridTemplateColumns: '48px 1.25fr 1.1fr 1.7fr 1.15fr 1.35fr 1.1fr 1fr 0.9fr' }}>
             <span><input type="checkbox" checked={allCustomersSelected} onChange={toggleAllCustomers} disabled={!customers.length || busy} aria-label="Select all customers" style={{ width: '18px', height: '18px' }} /></span>
-            <span>Customer</span><span>Customer ID</span><span>Created Date</span><span>Status</span>
+            <span>Customer Name</span><span>Customer ID</span><span>Address</span><span>Contact Person</span><span>Email ID</span><span>Mobile Number</span><span>Created Date</span><span>Status</span>
           </div>
           {customers.length ? customers.map((customer) => (
-            <div className={`table-row ${selectedCustomerId === customer.customerId ? 'ticket-row-selected' : ''}`} key={customer.customerId} style={{ gridTemplateColumns: '48px 1.2fr 1fr 1fr 1fr', cursor: 'pointer' }} onClick={() => setSelectedCustomerId(customer.customerId)}>
+            <div className={`table-row ${selectedCustomerId === customer.customerId ? 'ticket-row-selected' : ''}`} key={customer.customerId} style={{ gridTemplateColumns: '48px 1.25fr 1.1fr 1.7fr 1.15fr 1.35fr 1.1fr 1fr 0.9fr', cursor: 'pointer' }} onClick={() => setSelectedCustomerId(customer.customerId)}>
               <span onClick={(event) => event.stopPropagation()}>
                 <input type="checkbox" checked={selectedCustomerIds.includes(customer.customerId)} onChange={() => toggleCustomerSelection(customer.customerId)} disabled={busy} aria-label={`Select customer ${customer.customerName}`} style={{ width: '18px', height: '18px' }} />
               </span>
-              <span><strong>{customer.customerName}</strong></span><span>{customer.customerId}</span><span>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString() : '—'}</span><span><Status value={customer.status || 'Active'} /></span>
+              <span><strong>{customer.customerName || '—'}</strong></span>
+              <span className="ticket-id">{customer.customerId || '—'}</span>
+              <span>{customer.address || '—'}</span>
+              <span>{customer.contactPerson || '—'}</span>
+              <span>{customer.email || '—'}</span>
+              <span>{customer.mobileNumber || '—'}</span>
+              <span>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString() : '—'}</span>
+              <span><Status value={customer.status || 'Active'} /></span>
             </div>
           )) : <div className="empty-card">No customers found.</div>}
         </div>
