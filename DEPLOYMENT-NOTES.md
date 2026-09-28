@@ -69,3 +69,12 @@ Do not put AWS access keys, Cognito secrets, or other credentials in this reposi
 - Customer deletion removes the customer record and assigned assets, disables/unassigns linked customer portal users, and intentionally retains historical tickets.
 - API Gateway requires `DELETE /tickets/{id}` and `DELETE /customers/{customerId}` routes using the existing Cognito JWT authorizer.
 - See `DELETE-FEATURE-DEPLOYMENT.md` for deployment and validation steps.
+
+
+## Customer ID and Customer Details release (2026-09-28)
+- New customers receive an automatically generated ID in the format `<initials>-<year><4-digit-sequence>`, for example `MM-20260001`.
+- The sequence is maintained atomically per customer code and year in `ALTEKNET-Customers`; internal counter records are excluded from the customer list.
+- Add Customer now captures Customer Name, Address, Contact Person, Email ID, and Mobile Number.
+- Customer records retain `createdAt` and the UI displays Created Date.
+- The backend package manifest is included so the existing GitHub Actions Lambda deployment workflow can install the AWS SDK dependencies before packaging.
+- Existing customer IDs are preserved; only newly created customers use the new format.
