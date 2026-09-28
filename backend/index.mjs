@@ -375,10 +375,43 @@ async function validateSerialForCustomer(serialNumber, customerId, reveal = fals
   return asset
 }
 
+function customerCodeFromName(customerName) {
+  const words = String(customerName || '').trim().split(/[^A-Za-z0-9]+/).filter(Boolean)
+  if (!words.length) return 'CU'
+  if (words.length === 1) return (words[0].slice(0, 2) || 'CU').toUpperCase()
+  return words.map((word) => word[0]).join('').toUpperCase().slice(0, 6) || 'CU'
+}
+
+function customerCounterKey(year, code) {
+  return `__CUSTOMER_COUNTER__#${year}#${code}`
+}
+
+async function allocateCustomerId(customerName) {
+  const year = new Date().getFullYear()
+  const code = customerCodeFromName(customerName)
+
+  const result = await ddb.send(new UpdateCommand({
+    TableName: CUSTOMERS_TABLE,
+    Key: { customerId: customerCounterKey(year, code) },
+    UpdateExpression: 'SET entityType = :type, counterYear = :year, customerCode = :code ADD customerSequence :inc',
+    ExpressionAttributeValues: {
+      ':type': 'CUSTOMER_COUNTER',
+      ':year': year,
+      ':code': code,
+      ':inc': 1,
+    },
+    ReturnValues: 'UPDATED_NEW',
+  }))
+
+  const sequence = Number(result.Attributes?.customerSequence || 1)
+  return `${code}-${year}${String(sequence).padStart(4, '0')}`
+}
+
 async function listCustomers(event) {
   requireRole(event, ['SuperAdmins'])
   const result = await ddb.send(new ScanCommand({ TableName: CUSTOMERS_TABLE }))
-  return response(200, result.Items || [])
+  const customers = (result.Items || []).filter((item) => item.entityType !== 'CUSTOMER_COUNTER')
+  return response(200, customers)
 }
 
 async function createCustomer(event) {
@@ -387,18 +420,25 @@ async function createCustomer(event) {
   const customerName = String(body.customerName || body.name || '').trim()
   if (!customerName) throw Object.assign(new Error('Customer name is required'), { statusCode: 400 })
 
-  const customerId = String(body.customerId || `CUST-${Date.now().toString().slice(-6)}`).trim()
-  const existing = await getCustomer(customerId)
-  if (existing) throw Object.assign(new Error('Customer ID already exists'), { statusCode: 409 })
-
+  const customerId = await allocateCustomerId(customerName)
+  const now = new Date().toISOString()
   const item = {
     customerId,
     customerName,
+    address: String(body.address || '').trim(),
+    contactPerson: String(body.contactPerson || '').trim(),
+    email: String(body.email || body.emailId || '').trim().toLowerCase(),
+    mobileNumber: String(body.mobileNumber || body.mobile || '').trim(),
     status: String(body.status || 'Active'),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   }
-  await ddb.send(new PutCommand({ TableName: CUSTOMERS_TABLE, Item: item }))
+
+  await ddb.send(new PutCommand({
+    TableName: CUSTOMERS_TABLE,
+    Item: item,
+    ConditionExpression: 'attribute_not_exists(customerId)',
+  }))
   return response(201, item)
 }
 
