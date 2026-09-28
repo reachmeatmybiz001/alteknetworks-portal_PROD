@@ -2621,6 +2621,26 @@ function CustomerAssetAdministration({
         </div>
       </div>
 
+      {selectedCustomerId && (() => {
+        const selectedCustomer = customers.find((item) => item.customerId === selectedCustomerId)
+        if (!selectedCustomer) return null
+        return (
+          <div className="form-card" style={{ marginBottom: '20px' }}>
+            <h3>Customer Details</h3>
+            <div className="form-grid">
+              <div><span className="eyebrow">Customer Name</span><strong>{selectedCustomer.customerName || '—'}</strong></div>
+              <div><span className="eyebrow">Customer ID</span><strong className="ticket-id">{selectedCustomer.customerId || '—'}</strong></div>
+              <div><span className="eyebrow">Address</span><strong>{selectedCustomer.address || '—'}</strong></div>
+              <div><span className="eyebrow">Contact Person</span><strong>{selectedCustomer.contactPerson || '—'}</strong></div>
+              <div><span className="eyebrow">Email ID</span><strong>{selectedCustomer.email || selectedCustomer.emailId || '—'}</strong></div>
+              <div><span className="eyebrow">Mobile Number</span><strong>{selectedCustomer.mobileNumber || selectedCustomer.mobile || '—'}</strong></div>
+              <div><span className="eyebrow">Created Date</span><strong>{selectedCustomer.createdAt ? new Date(selectedCustomer.createdAt).toLocaleDateString('en-GB') : '—'}</strong></div>
+              <div><span className="eyebrow">Status</span><strong>{selectedCustomer.status || 'Active'}</strong></div>
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="table-card" style={{ marginBottom: '20px' }}>
         <div className="ticket-table customer-list-table">
           <div className="table-row table-head" style={{ gridTemplateColumns: '48px 1.25fr 1.1fr 1.7fr 1.15fr 1.35fr 1.1fr 1fr 0.9fr' }}>
@@ -2636,9 +2656,9 @@ function CustomerAssetAdministration({
               <span className="ticket-id">{customer.customerId || '—'}</span>
               <span>{customer.address || '—'}</span>
               <span>{customer.contactPerson || '—'}</span>
-              <span>{customer.email || '—'}</span>
-              <span>{customer.mobileNumber || '—'}</span>
-              <span>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString() : '—'}</span>
+              <span>{customer.email || customer.emailId || '—'}</span>
+              <span>{customer.mobileNumber || customer.mobile || '—'}</span>
+              <span>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('en-GB') : '—'}</span>
               <span><Status value={customer.status || 'Active'} /></span>
             </div>
           )) : <div className="empty-card">No customers found.</div>}
