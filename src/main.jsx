@@ -2618,7 +2618,6 @@ function CustomerAssetAdministration({
               Delete Customer
             </button>
           </div>
-          <label>Bulk CSV / Excel Import<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => importCsv(e.target.files?.[0])} disabled={!selectedCustomerId || busy} /><small>Columns: serialNumber, product, manufacturer, model, status</small></label>
         </div>
       </div>
 
@@ -2655,6 +2654,9 @@ function CustomerAssetAdministration({
           <label>Status<select value={status} onChange={(e) => setStatus(e.target.value)}><option>Active</option><option>Inactive</option></select></label>
         </div>
         <div className="form-actions"><button className="primary-button" disabled={busy}>Add Asset</button></div>
+        <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px solid var(--border, #e5e7eb)' }}>
+          <label>Bulk CSV / Excel Import<input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => importCsv(e.target.files?.[0])} disabled={!selectedCustomerId || busy} /><small>Columns: serialNumber, product, manufacturer, model, status</small></label>
+        </div>
       </form>}
 
       <div className="table-card">
