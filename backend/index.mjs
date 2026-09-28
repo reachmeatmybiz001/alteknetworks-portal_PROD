@@ -382,28 +382,53 @@ function customerCodeFromName(customerName) {
   return words.map((word) => word[0]).join('').toUpperCase().slice(0, 6) || 'CU'
 }
 
-function customerCounterKey(year, code) {
-  return `__CUSTOMER_COUNTER__#${year}#${code}`
+function customerCounterKey(year) {
+  // One counter per year, shared by ALL customers regardless of name/code.
+  return `__CUSTOMER_COUNTER__#${year}`
+}
+
+async function findHighestCustomerSequence(year) {
+  const result = await ddb.send(new ScanCommand({ TableName: CUSTOMERS_TABLE }))
+  const prefix = `-${year}`
+  let maxSequence = 0
+
+  for (const item of result.Items || []) {
+    if (item.entityType === 'CUSTOMER_COUNTER') continue
+    const id = String(item.customerId || '')
+    const marker = id.lastIndexOf(prefix)
+    if (marker < 0) continue
+    const suffix = id.slice(marker + prefix.length)
+    if (/^\d{4,}$/.test(suffix)) {
+      maxSequence = Math.max(maxSequence, Number(suffix))
+    }
+  }
+
+  return maxSequence
 }
 
 async function allocateCustomerId(customerName) {
   const year = new Date().getFullYear()
   const code = customerCodeFromName(customerName)
 
+  // The first allocation after this change seeds the GLOBAL yearly counter
+  // from the highest existing customer sequence, so existing MM-20260001 /
+  // CL-20260001 records are respected and the next new customer becomes 0002.
+  const existingMax = await findHighestCustomerSequence(year)
+
   const result = await ddb.send(new UpdateCommand({
     TableName: CUSTOMERS_TABLE,
-    Key: { customerId: customerCounterKey(year, code) },
-    UpdateExpression: 'SET entityType = :type, counterYear = :year, customerCode = :code ADD customerSequence :inc',
+    Key: { customerId: customerCounterKey(year) },
+    UpdateExpression: 'SET entityType = :type, counterYear = :year, customerSequence = if_not_exists(customerSequence, :base) + :inc',
     ExpressionAttributeValues: {
       ':type': 'CUSTOMER_COUNTER',
       ':year': year,
-      ':code': code,
+      ':base': existingMax,
       ':inc': 1,
     },
     ReturnValues: 'UPDATED_NEW',
   }))
 
-  const sequence = Number(result.Attributes?.customerSequence || 1)
+  const sequence = Number(result.Attributes?.customerSequence || existingMax + 1)
   return `${code}-${year}${String(sequence).padStart(4, '0')}`
 }
 
