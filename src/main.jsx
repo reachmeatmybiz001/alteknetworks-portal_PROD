@@ -2493,6 +2493,10 @@ function CustomerAssetAdministration({
     }
   }
   const [customerName, setCustomerName] = useState('')
+  const [customerAddress, setCustomerAddress] = useState('')
+  const [contactPerson, setContactPerson] = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [mobileNumber, setMobileNumber] = useState('')
   const [serialNumber, setSerialNumber] = useState('')
   const [product, setProduct] = useState('')
   const [manufacturer, setManufacturer] = useState('')
@@ -2519,7 +2523,23 @@ function CustomerAssetAdministration({
     e.preventDefault()
     if (!customerName.trim()) return
     setBusy(true); setMessage('')
-    try { const item = await onCreateCustomer({ customerName: customerName.trim() }); setCustomerName(''); setSelectedCustomerId(item.customerId); setMessage(`Customer ${item.customerName} created.`); await onLoadCustomers?.() }
+    try {
+      const item = await onCreateCustomer({
+        customerName: customerName.trim(),
+        address: customerAddress.trim(),
+        contactPerson: contactPerson.trim(),
+        email: customerEmail.trim().toLowerCase(),
+        mobileNumber: mobileNumber.trim(),
+      })
+      setCustomerName('')
+      setCustomerAddress('')
+      setContactPerson('')
+      setCustomerEmail('')
+      setMobileNumber('')
+      setSelectedCustomerId(item.customerId)
+      setMessage(`Customer ${item.customerName} created with ID ${item.customerId}.`)
+      await onLoadCustomers?.()
+    }
     catch (error) { setMessage(error?.message || 'Unable to create customer.') }
     finally { setBusy(false) }
   }
@@ -2561,6 +2581,10 @@ function CustomerAssetAdministration({
         <h3>Add Customer</h3>
         <div className="form-grid">
           <label>Customer Name<input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="ABC Technologies" required /></label>
+          <label>Address<textarea value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Customer address" rows="3" required /></label>
+          <label>Contact Person<input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Contact person name" required /></label>
+          <label>Email ID<input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="contact@example.com" required /></label>
+          <label>Mobile Number<input type="tel" value={mobileNumber} onChange={(e) => setMobileNumber(e.target.value)} placeholder="Mobile number" required /></label>
           <div className="form-actions" style={{ alignItems: 'end' }}><button className="primary-button" disabled={busy}>Create Customer</button></div>
         </div>
       </form>
@@ -2600,16 +2624,16 @@ function CustomerAssetAdministration({
 
       <div className="table-card" style={{ marginBottom: '20px' }}>
         <div className="ticket-table">
-          <div className="table-row table-head" style={{ gridTemplateColumns: '48px 1fr 1fr 1fr' }}>
+          <div className="table-row table-head" style={{ gridTemplateColumns: '48px 1.2fr 1fr 1fr 1fr' }}>
             <span><input type="checkbox" checked={allCustomersSelected} onChange={toggleAllCustomers} disabled={!customers.length || busy} aria-label="Select all customers" style={{ width: '18px', height: '18px' }} /></span>
-            <span>Customer</span><span>Customer ID</span><span>Status</span>
+            <span>Customer</span><span>Customer ID</span><span>Created Date</span><span>Status</span>
           </div>
           {customers.length ? customers.map((customer) => (
-            <div className={`table-row ${selectedCustomerId === customer.customerId ? 'ticket-row-selected' : ''}`} key={customer.customerId} style={{ gridTemplateColumns: '48px 1fr 1fr 1fr', cursor: 'pointer' }} onClick={() => setSelectedCustomerId(customer.customerId)}>
+            <div className={`table-row ${selectedCustomerId === customer.customerId ? 'ticket-row-selected' : ''}`} key={customer.customerId} style={{ gridTemplateColumns: '48px 1.2fr 1fr 1fr 1fr', cursor: 'pointer' }} onClick={() => setSelectedCustomerId(customer.customerId)}>
               <span onClick={(event) => event.stopPropagation()}>
                 <input type="checkbox" checked={selectedCustomerIds.includes(customer.customerId)} onChange={() => toggleCustomerSelection(customer.customerId)} disabled={busy} aria-label={`Select customer ${customer.customerName}`} style={{ width: '18px', height: '18px' }} />
               </span>
-              <span><strong>{customer.customerName}</strong></span><span>{customer.customerId}</span><span><Status value={customer.status || 'Active'} /></span>
+              <span><strong>{customer.customerName}</strong></span><span>{customer.customerId}</span><span>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString() : '—'}</span><span><Status value={customer.status || 'Active'} /></span>
             </div>
           )) : <div className="empty-card">No customers found.</div>}
         </div>
